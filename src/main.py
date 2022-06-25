@@ -16,22 +16,22 @@ import requests
 
 # using board number system
 GPIO.setmode(GPIO.BOARD)
-### Pin Numbering Declaration (setup channel mode of the Pi to Board values) ###
-LED_G = 7     # green led     GPIO 4
-LED_B = 15     # blue led       GPIO 22
-LED_R = 18      # red led         GPIO 24
+# PIN DECLARATIONS #
+LED_G = 7     # green led            GPIO 4
+LED_B = 15    # blue led             GPIO 22
+LED_R = 18    # red led              GPIO 24
 
-BTN_B = 13     # blue button    GPIO 27
-BTN_R = 16      # red bytton       GPIO 23
-BTN_G = 40     # green led         GPIO 21
+BTN_B = 13    # blue button          GPIO 27
+BTN_R = 16    # red bytton           GPIO 23
+BTN_G = 40    # green led            GPIO 21
 
-DHT_IN = 11     # DHT       GPIO 17
-INFAR = 29     # infared sensor       GPIO 5
-# these are converted from gpio from the lab report
+DHT_IN = 11   # DHT                  GPIO 17
+INFAR = 29    # infared sensor       GPIO 5
 
-GPIO.setwarnings(False) # to disable warnings
+# to disable warnings
+GPIO.setwarnings(False) 
 
-### set GPIO pins (for inputs / outputs ) and all setups needed based on assignement description ###
+# PIN SETUPS
 GPIO.setup(BTN_G, GPIO.IN, pull_up_down=GPIO.PUD_UP) # input of green button
 GPIO.setup(BTN_R, GPIO.IN, pull_up_down=GPIO.PUD_UP) # input of red button
 GPIO.setup(BTN_B, GPIO.IN, pull_up_down=GPIO.PUD_UP) # input of blue button
@@ -43,6 +43,7 @@ GPIO.setup(LED_B, GPIO.OUT, initial=GPIO.LOW) # output of blues
 GPIO.setup(INFAR, GPIO.IN, pull_up_down=GPIO.PUD_UP) # set INFAR to INPUT mode
 
 
+# GLOBAL FLAGS
 GREEN_LCDFLAG = 0 # tells if the green led is on
 door_flag = 0 # open = 1, closed = 0
 door_alert = 0 # alerts when door is opened/ closed
@@ -68,6 +69,7 @@ def sensor_light():
     if (GREEN_LCDFLAG == 0): # if all the threads are gone, then lcd goes low
         GPIO.output(LED_G, GPIO.LOW)
 
+# retrieves web data using API key
 def get_humidity():
     today = date.today()
     count = 0
@@ -92,7 +94,7 @@ def get_humidity():
         humidity = dht.humidity
     return int(humidity)
 
-# loop that updates temperature stuff
+# loop that updates temperature variables
 def hvac_loop():
     global desired_temp
     global feels_like_temp
@@ -247,7 +249,7 @@ def loop():
         lcd.message("H:" + hvac + "     " + "L:" + led + '\n')# display CPU temperature
         time.sleep(0.1)
         
-# catches interrup and spawns the blink_thread() thread to handle interrupt
+# catches interrupt and spawns the blink_thread() thread to handle interrupt
 def handle(pin):
     global GREEN_LCDFLAG
     global door_alert
