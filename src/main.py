@@ -1,21 +1,20 @@
 #!/usr/bin/python
-# Name: Eric Chen
 
 ### modules ###
 import threading
 import RPi.GPIO as GPIO
 import time     # for time delay and threshold
+from datetime import datetime, date
+import requests
 
-# this is for lcd and dht stuff
+# lcd and dht files
 from PCF8574 import PCF8574_GPIO
 from Adafruit_LCD1602 import Adafruit_CharLCD
-from datetime import datetime, date
 import Freenove_DHT as DHT
-# import requests for webs
-import requests
 
 # using board number system
 GPIO.setmode(GPIO.BOARD)
+
 # PIN DECLARATIONS #
 LED_G = 7     # green led            GPIO 4
 LED_B = 15    # blue led             GPIO 22
@@ -31,6 +30,7 @@ INFAR = 29    # infared sensor       GPIO 5
 # to disable warnings
 GPIO.setwarnings(False) 
 
+
 # PIN SETUPS
 GPIO.setup(BTN_G, GPIO.IN, pull_up_down=GPIO.PUD_UP) # input of green button
 GPIO.setup(BTN_R, GPIO.IN, pull_up_down=GPIO.PUD_UP) # input of red button
@@ -44,24 +44,27 @@ GPIO.setup(INFAR, GPIO.IN, pull_up_down=GPIO.PUD_UP) # set INFAR to INPUT mode
 
 
 # GLOBAL FLAGS
-GREEN_LCDFLAG = 0 # tells if the green led is on
-door_flag = 0 # open = 1, closed = 0
-door_alert = 0 # alerts when door is opened/ closed
-hvac_setting = 0 # 0 = off, 1 = AC, 2 = HEAT
-prev_hvac_setting = 0 # holds previous setting to compare
-desired_temp = 0 # desired temperature
-feels_like_temp = 0 # temperature that feels like
+GREEN_LCDFLAG = 0       # tells if the green led is on
+door_flag = 0           # open = 1, closed = 0
+door_alert = 0          # alerts when door is opened/ closed
+hvac_setting = 0        # 0 = off, 1 = AC, 2 = HEAT
+prev_hvac_setting = 0   # holds previous setting to compare
+desired_temp = 0        # desired temperature
+feels_like_temp = 0     # temperature that feels like
 
 # energy bill in k
 CONST_AC = 18
 CONST_HEAT = 36
 CONST_kW = .50
 
-# Takes care of movemnt light, makes a thread that lasts for 10 seconds each time there is movemnt
+
 def sensor_light():
-    global GREEN_LCDFLAG
-    # turn light on
-    # green lcdflag is an increment to tell how many threads are waiting for the green light
+    ''' takes care of movemnt light, 
+    makes a thread that lasts for 10 seconds 
+    each time there is movement 
+    '''
+    
+    global GREEN_LCDFLAG     # global green lcdflag is an increment to tell how many threads are waiting for the green light
     GPIO.output(LED_G, GPIO.HIGH)
     GREEN_LCDFLAG += 1
     time.sleep(10)
@@ -69,16 +72,16 @@ def sensor_light():
     if (GREEN_LCDFLAG == 0): # if all the threads are gone, then lcd goes low
         GPIO.output(LED_G, GPIO.LOW)
 
-# retrieves web data using API key
+
 def get_humidity():
+    # retrieves web data using API key
+
     today = date.today()
     count = 0
     humidity = 0
     todaysdate = today.strftime("%Y-%m-%d")
-    # parse the API of the CIMS data
     webstring = "https://et.water.ca.gov/api/data?appKey=30df55a6-1b4b-4320-926a-949b89e08a95&targets=75&startDate=" + todaysdate + "&endDate=" + todaysdate + "&dataItems=hly-rel-hum"
     response = requests.get(webstring).json()
-    # check is response recieved
     if response:
         print('Retrieved Web Data!')
         # parse through, and break if you find a none value
@@ -86,57 +89,61 @@ def get_humidity():
             if (i['HlyRelHum']['Value'] == None):
                 break
             count+=1
-        # humidity now will find the value that exists before it
-        humidity = response['Data']['Providers'][0]['Records'][count-1]['HlyRelHum']['Value']
-    # if none recieved, humidity is just the dht humidity
+        # if none recieved, humidity is just the dht humidity
+        humidity = response['Data']['Providers'][0]['Records'][count-1]['HlyRelHum']['Value'] 
     else:
         print('Error occurred. Using DHT11 humidity value... ')
         humidity = dht.humidity
     return int(humidity)
 
-# loop that updates temperature variables
+
 def hvac_loop():
+    ''' loop that updates temperature variables
+    by getting the past 3 temperatures 
+    '''
+    
     global desired_temp
     global feels_like_temp
     global hvac_setting
-    dht = DHT.DHT(DHT_IN)   #create a DHT class object
+    dht = DHT.DHT(DHT_IN)
     count = 0 # Measurement counts
     avg_temp = 0
     start = 0    #first 3 are on
     threelist = [] # lists the last 3
     while(True):
         for i in range(0,11):            
-            check = dht.readDHT11()     #this is from tempalate
-            if (check is dht.DHTLIB_OK):      #gets a normal valye
+            check = dht.readDHT11()
+            if (check is dht.DHTLIB_OK):
                 break
             time.sleep(0.1)
         if (count >= 3):
-            # pop the first, add new to end
             threelist.pop(0)
             threelist.append(dht.temperature*1.8+32) # convert to F
             avg_temp = sum(threelist) / 3
-        else: #before three, keep appending, and avge temp is just avg_
+        else:
             threelist.append(dht.temperature*1.8+32)
             avg_temp = dht.temperature*1.8+32
-        # get huminidty
         humidity = get_humidity()
         # set initial desired temp to whatever temp it is now
-        # get the feel temp
         feels_like_temp = avg_temp + 0.05*humidity
         if (count == 0):
             desired_temp = feels_like_temp
         count += 1
-        # check every 1 second
         time.sleep(1)
 
-# loop t that updates the LCD
+        
 def loop():
+    ''' LCD update loop,
+    will wait for door close / open
+    and temperature updates
+    '''
+    
     global door_alert
     global door_flag
     global GREEN_LCDFLAG
     global hvac_setting
     global prev_hvac_setting
-    total_energy = 0      # this is in kWh
+    total_energy = 0    # this is in kWh
     total_cost = 0      # money
     mcp.output(3,1)     # turn on LCD backlight
     lcd.begin(16,2)     # set number of LCD lines and column
@@ -145,18 +152,17 @@ def loop():
         if (door_alert == 1):
             time.sleep(0.1) # wait for variable to update
             if (door_flag == 1):
-                lcd.setCursor(0,0)  # set cursor position
-                lcd.message("DOOR/WINDOW OPEN\n") # display CPU temperature
-                lcd.message("  HVAC HALTED   ")  # display CPU temperature
+                lcd.setCursor(0,0)
+                lcd.message("DOOR/WINDOW OPEN\n")
+                lcd.message("  HVAC HALTED   ")
                 GPIO.output(LED_B, GPIO.LOW)
                 GPIO.output(LED_R, GPIO.LOW)
-                # holds the current hvac setting to prev
                 prev_hvac_setting = hvac_setting
                 hvac_setting = 0
             else:
-                lcd.setCursor(0,0)  # set cursor position
-                lcd.message("DOOR/WINDOW SHUT\n") # display CPU temperature
-                lcd.message("  HVAC RESUMED  ") # display CPU temperature
+                lcd.setCursor(0,0)
+                lcd.message("DOOR/WINDOW SHUT\n")
+                lcd.message("  HVAC RESUMED  ")
                 # resumes the hvac
                 hvac_setting = prev_hvac_setting
             time.sleep(3)
@@ -171,8 +177,8 @@ def loop():
                 GPIO.output(LED_R, GPIO.HIGH)
                 if (hvac_setting != prev_hvac_setting):
                     lcd.setCursor(0, 0)  # set cursor position
-                    lcd.message("  HVAC HEAT ON  \n")  # display CPU temperature
-                    lcd.message("                \n")  # display CPU temperature
+                    lcd.message("  HVAC HEAT ON  \n")
+                    lcd.message("                \n")
                     time.sleep(3)
                     # then show cost report
                     lcd.setCursor(0, 0)  # set cursor position
@@ -185,22 +191,22 @@ def loop():
                 GPIO.output(LED_R, GPIO.LOW)
                 if (hvac_setting != prev_hvac_setting):
                     lcd.setCursor(0, 0)  # set cursor position
-                    lcd.message("   HVAC AC ON   \n")  # display CPU temperature
-                    lcd.message("                \n")  # display CPU temperature
+                    lcd.message("   HVAC AC ON   \n")
+                    lcd.message("                \n")
                     time.sleep(3)
                     # then show cost report
                     lcd.setCursor(0, 0)  # set cursor position
                     lcd.message("Energy: %.2fKWh   \nCost: $%.2f    "%(total_energy,total_cost))  # display CPU temperature
                     time.sleep(1.5)
-            # good temp
+            # right temp
             else:
                 hvac_setting = 0
                 GPIO.output(LED_B, GPIO.LOW)
                 GPIO.output(LED_R, GPIO.LOW)
                 if (hvac_setting != prev_hvac_setting):
                     lcd.setCursor(0, 0)  # set cursor position
-                    lcd.message("    HVAC OFF    \n")  # display CPU temperature
-                    lcd.message("                \n")  # display CPU temperature
+                    lcd.message("    HVAC OFF    \n") 
+                    lcd.message("                \n")
                     time.sleep(3)
                     # then show cost report
                     lcd.setCursor(0, 0)  # set cursor position
@@ -249,8 +255,12 @@ def loop():
         lcd.message("H:" + hvac + "     " + "L:" + led + '\n')# display CPU temperature
         time.sleep(0.1)
         
-# catches interrupt and spawns the blink_thread() thread to handle interrupt
+        
 def handle(pin):
+    ''' catches interrupt and spawns the 
+    blink_thread() thread to handle interrupt
+    '''
+    
     global GREEN_LCDFLAG
     global door_alert
     global door_flag
@@ -263,7 +273,7 @@ def handle(pin):
         # entering thread
         t = threading.Thread(target=sensor_light)
         t.daemon = True
-        t.start()   # start threading
+        t.start()
     # alert the door and change the door state
     if (pin == BTN_G):
         door_alert = 1
